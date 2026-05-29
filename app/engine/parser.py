@@ -55,10 +55,10 @@ class CodeParser:
         }
         return mapping.get(ext, 'text')
 
-    def parse_file(self, file_path: str, root_dir: str) -> list[Document]:
+    def chunk_file(self, file_path: str, repo_base_path: str) -> list[dict]:
         """
         Reads a single file, selects the best chunking strategy based on 
-        extension, slices it safely, and returns a list of Document objects 
+        extension, slices it safely, and returns a list of dictionary blocks 
         loaded with metadata.
         """
         ext = os.path.splitext(file_path)[1].lower()
@@ -100,18 +100,35 @@ class CodeParser:
         raw_chunks = splitter.split_text(content)
 
         # 4. Standardize the file path format (e.g., convert 'lib\main.dart' to 'lib/main.dart')
-        relative_path = os.path.relpath(file_path, root_dir).replace("\\", "/")
+        relative_path = os.path.relpath(file_path, repo_base_path).replace("\\", "/")
 
-        # 5. Pack everything into clean LangChain Document objects containing your core metadata
+        # 5. Pack everything into clean dictionary blocks containing your core metadata
+        structured_chunks = []
+        for chunk in raw_chunks:
+            structured_chunks.append({
+                "page_content": chunk,
+                "metadata": {
+                    "file_path": relative_path,
+                    "language": self.get_language_string(file_path)
+                }
+            })
+
+        return structured_chunks
+
+    def parse_file(self, file_path: str, root_dir: str) -> list[Document]:
+        """
+        Alternative interface wrapper: chunks a file and returns LangChain Document objects.
+        """
+        raw_chunks = self.chunk_file(file_path, root_dir)
         documents = []
         for idx, chunk in enumerate(raw_chunks):
             doc = Document(
-                page_content=chunk,
+                page_content=chunk["page_content"],
                 metadata={
-                    "file_path": relative_path,
-                    "language": self.get_language_string(file_path),
+                    "file_path": chunk["metadata"]["file_path"],
+                    "language": chunk["metadata"]["language"],
                     "chunk_index": idx,
-                    "source": relative_path
+                    "source": chunk["metadata"]["file_path"]
                 }
             )
             documents.append(doc)
