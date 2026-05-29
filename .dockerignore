@@ -1,0 +1,39 @@
+Ignore Python virtual environments
+
+venv/
+.venv/
+env/
+ENV/
+
+Ignore Python compiler caches
+
+/pycache/
+/.pyc
+/.pyo
+/*.pyd
+
+Ignore local environmental configuration keys to protect production secrets
+
+.env
+.env.*
+
+Ignore local database states, cloned developer repositories, and temporary indexes
+
+data/
+
+Ignore system-specific and IDE configurations
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+Ignore Git configurations and local deployment document templates
+
+.git/
+.github/
+.gitignore
+.dockerignore
+Dockerfile
+deployment_guide.md
+README.md

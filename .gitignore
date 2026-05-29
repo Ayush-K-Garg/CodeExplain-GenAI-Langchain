@@ -1,0 +1,20 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Python caching
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Local Application Data & Cache (Crucial)
+data/
+.env
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
