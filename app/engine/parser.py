@@ -1,32 +1,46 @@
 import os
 from langchain_core.documents import Document
-# FIX: Migrated from deprecated 'langchain.text_splitter' to 'langchain_text_splitters'
+# Import directly from the modern, lightweight splitters library
 from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
 
 class CodeParser:
     def __init__(self):
-        # 1. Map typical code extensions to LangChain's structural Language enums
-        self.LANGUAGE_MAP = {
-            '.py': Language.PYTHON,
-            '.js': Language.JS,
-            '.jsx': Language.JS,
-            '.ts': Language.TS,
-            '.tsx': Language.TS,
-            '.cpp': Language.CPP,
-            '.h': Language.CPP,
-            '.hpp': Language.CPP,
-            '.c': Language.C,
-            '.java': Language.JAVA,
-            '.go': Language.GO,
-            '.rs': Language.RUST,
-            '.kt': Language.KOTLIN,
-            '.swift': Language.SWIFT,
-            '.html': Language.HTML,
-            '.css': Language.CSS,
-            '.md': Language.MARKDOWN,
-            # Use Dart explicitly, with a graceful fallback if needed
-            '.dart': Language.DART if hasattr(Language, 'DART') else Language.JS  
+        # We build this mapping dynamically on startup to prevent ANY AttributeError
+        # due to library updates or missing compiler configurations on cloud hosts!
+        self.LANGUAGE_MAP = {}
+        
+        # Structural mapping configurations
+        target_mappings = {
+            '.py': 'PYTHON',
+            '.js': 'JS',
+            '.jsx': 'JS',
+            '.ts': 'TS',
+            '.tsx': 'TS',
+            '.cpp': 'CPP',
+            '.h': 'CPP',
+            '.hpp': 'CPP',
+            '.c': 'CPP',      # Fallback: parse C files using standard C++ syntax rules
+            '.java': 'JAVA',
+            '.go': 'GO',
+            '.rs': 'RUST',
+            '.kt': 'KOTLIN',
+            '.swift': 'SWIFT',
+            '.html': 'HTML',
+            '.md': 'MARKDOWN',
+            '.dart': 'DART'   # Will fall back dynamically below if DART enum doesn't exist
         }
+
+        # Build our active map safely
+        for ext, enum_name in target_mappings.items():
+            lang_enum = getattr(Language, enum_name, None)
+            if lang_enum is not None:
+                self.LANGUAGE_MAP[ext] = lang_enum
+            else:
+                # Smart fallbacks for less common language configurations
+                if ext == '.dart':
+                    self.LANGUAGE_MAP[ext] = getattr(Language, 'JS', None) or getattr(Language, 'TS', None)
+                elif ext == '.c':
+                    self.LANGUAGE_MAP[ext] = getattr(Language, 'CPP', None)
 
     def get_language_string(self, file_path: str) -> str:
         """Helper to return a clean language label for our metadata."""
