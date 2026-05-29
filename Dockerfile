@@ -8,8 +8,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /code
 
 # Install system-level dependencies:
-# 1. build-essential & g++ are required to compile FAISS
-# 2. git is required by your gitpython wrapper to clone repositories dynamically!
+# 1. build-essential & g++ are required to compile FAISS CPU bindings
+# 2. git is required by your gitpython wrapper to clone repositories dynamically
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     g++ \
