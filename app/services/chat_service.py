@@ -1,3 +1,4 @@
+# FIX: Correctly points to app.engine.gemini_client to load the singleton instance
 from app.engine.gemini_client import gemini_chat_engine
 
 class ChatService:

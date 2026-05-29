@@ -5,7 +5,6 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.engine.parser import code_parser
 from app.engine.embedder import embedding_engine
-from app.services.repo_service import repo_service
 
 class VectorStoreManager:
     def get_index_path(self, repo_id: str) -> str:
@@ -20,6 +19,8 @@ class VectorStoreManager:
         index_path = self.get_index_path(repo_id)
         
         try:
+            from app.services.repo_service import repo_service
+
             # 1. Gather all valid code/doc files using our repo_service scanner
             all_files = repo_service.scan_repo_files(local_repo_path)
             if not all_files:

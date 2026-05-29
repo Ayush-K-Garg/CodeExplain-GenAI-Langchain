@@ -75,10 +75,12 @@ class CodeParser:
             return []
 
         # 2. Select the optimal Splitting Strategy
-        if ext == '.md':
+        md_lang = self.LANGUAGE_MAP.get('.md', getattr(Language, 'MARKDOWN', None))
+        
+        if ext == '.md' and md_lang is not None:
             # Markdown specific splitting strategy
             splitter = RecursiveCharacterTextSplitter.from_language(
-                language=Language.MARKDOWN,
+                language=md_lang,
                 chunk_size=800,
                 chunk_overlap=50
             )
@@ -118,6 +120,7 @@ class CodeParser:
     def parse_file(self, file_path: str, root_dir: str) -> list[Document]:
         """
         Alternative interface wrapper: chunks a file and returns LangChain Document objects.
+        This provides perfect compatibility with the repository services.
         """
         raw_chunks = self.chunk_file(file_path, root_dir)
         documents = []

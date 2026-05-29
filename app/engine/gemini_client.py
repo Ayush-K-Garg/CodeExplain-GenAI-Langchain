@@ -12,7 +12,7 @@ class GeminiChatEngine:
         # 1. Force reload local disk state to ensure environmental consistency
         load_dotenv(override=True)
         
-        # 2. Extract configuration credentials cleanly from central Pydantic schema or OS flags
+        # 2. Extract configuration credentials cleanly from central Pydantic settings or OS flags
         api_key = getattr(settings, "GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
         if not api_key:
             raise ValueError(
@@ -25,7 +25,7 @@ class GeminiChatEngine:
         self.MODEL_NAME = env_model if env_model else "gemini-2.5-flash"
         
         # Log active telemetry prefix safely on launch
-        print(f" [CodeExplain Engine Initialized] Active Key Target: {api_key[:8]}... | Engine Variant: {self.MODEL_NAME}")
+        print(f"🚀 [CodeExplain Engine Initialized] Active Key Target: {api_key[:8]}... | Engine Variant: {self.MODEL_NAME}")
         
         # 4. Instantiate the official Google GenAI production client
         self.client = genai.Client(api_key=api_key)
@@ -104,7 +104,7 @@ class GeminiChatEngine:
                         contents=contents_payload,
                         config=types.GenerateContentConfig(
                             system_instruction=system_instruction,
-                            temperature=0.3,  # Lower temp forces structured deterministic results
+                            temperature=0.3,
                         )
                     )
                     break  
@@ -174,34 +174,51 @@ class GeminiChatEngine:
             return response.text
         except Exception as e:
             print(f"⚠️ Overview generation API blocked ({str(e)}). Running offline analyzer...")
-            return self._generate_offline_fallback_report(repo_id)
+            return self.generate_offline_fallback_report(repo_id)
 
-    def _generate_offline_fallback_report(self, repo_id: str) -> str:
+    def generate_offline_fallback_report(self, repo_id: str) -> str:
         """
         Scans your local project files on disk, classifies the project tech stack,
         and generates a beautiful, valid markdown report matching your layout engine.
+        Exposed publicly for seamless synchronization with repo_service.py and routes.py.
         """
         # Formulate absolute directory path to local files
         target_dir = os.path.join(settings.REPO_STORE_DIR, repo_id)
         all_files = []
         
+        # Supported codebase extensions to scan (prevents binary image asset pollution)
+        supported_exts = {
+            '.py', '.js', '.jsx', '.ts', '.tsx', '.cpp', '.h', '.hpp', '.c', 
+            '.java', '.go', '.rs', '.kt', '.swift', '.html', '.css', '.md', '.dart'
+        }
+        
         if os.path.exists(target_dir):
-            # Recursively find up to 100 files, ignoring common package files
+            # Recursively find up to 100 files, ignoring package configurations
             for root, _, filenames in os.walk(target_dir):
                 for filename in filenames:
                     relpath = os.path.relpath(os.path.join(root, filename), target_dir)
-                    # Ignore dependency managers and build artifacts
-                    if any(x in relpath for x in ['.git/', 'node_modules/', 'build/', '.dart_tool/', 'ios/', 'android/']):
+                    
+                    # FIX 1: Convert backslashes to forward slashes BEFORE verifying banned directories (Fixes Windows compatibility)
+                    normalized_relpath = relpath.replace("\\", "/")
+                    
+                    if any(x in normalized_relpath for x in ['.git/', 'node_modules/', 'build/', '.dart_tool/', 'ios/', 'android/', 'macos/', 'windows/']):
                         continue
-                    all_files.append(relpath.replace("\\", "/"))
+                    
+                    # FIX 2: Validate that the file is a supported source code file
+                    ext = os.path.splitext(filename)[1].lower()
+                    if ext not in supported_exts:
+                        continue
+                        
+                    all_files.append(normalized_relpath)
         
         # Heuristically classify the codebase tech stack
         is_flutter = any(f.endswith('.dart') for f in all_files)
         is_react = any(f.endswith(('.jsx', '.tsx', '.js')) for f in all_files)
         is_python = any(f.endswith('.py') for f in all_files)
         
-        tech_stack = "Custom Codebase"
-        primary_purpose = "general software modules"
+        tech_stack = "Flutter (Dart)" if is_flutter else ("React (JS/TS)" if is_react else "Custom Codebase")
+        primary_purpose = "cross-platform application development" if is_flutter else ("modern reactive web dashboard" if is_react else "general software modules")
+        
         ascii_flow = """+------------------+
 |   User Action    |
 +--------v---------+
@@ -211,8 +228,6 @@ class GeminiChatEngine:
 +------------------+"""
 
         if is_flutter:
-            tech_stack = "Flutter (Dart)"
-            primary_purpose = "cross-platform application development"
             ascii_flow = """+------------------+
 |   UI Component   |
 +--------v---------+
@@ -225,10 +240,8 @@ class GeminiChatEngine:
 |  Data Repository |
 +------------------+"""
         elif is_react:
-            tech_stack = "React Framework (JavaScript/TypeScript)"
-            primary_purpose = "modern reactive web dashboard"
             ascii_flow = """+------------------+
-|  React View DOM  |
+|   React View DOM |
 +--------v---------+
          | (dispatches hook actions)
 +--------v---------+
@@ -239,10 +252,8 @@ class GeminiChatEngine:
 | Backend Service  |
 +------------------+"""
         elif is_python:
-            tech_stack = "Python (FastAPI / Django)"
-            primary_purpose = "high-performance backend services"
             ascii_flow = """+------------------+
-|   HTTP Client    |
+|    HTTP Client   |
 +--------v---------+
          | (REST Request API)
 +--------v---------+
@@ -253,7 +264,7 @@ class GeminiChatEngine:
 | Database Service |
 +------------------+"""
 
-        # Choose the first 6 key files to display as recommended entry points
+        # Choose the first 6 key code files to display as recommended starting entries
         key_files = [f for f in all_files if any(k in f.lower() for k in ['main', 'app', 'home', 'route', 'controller', 'service'])]
         if not key_files:
             key_files = all_files[:6]

@@ -3,19 +3,21 @@ import uuid
 import shutil
 import asyncio
 import zipfile
+import gc
 from git import Repo
 from app.core.config import settings
 
 class RepoService:
-    # Production ignore lists to avoid processing irrelevant files
+    # Production ignore lists to avoid processing irrelevant files or heavy build artifacts
     BANNED_DIRECTORIES = {
         '.git', '.github', 'node_modules', 'venv', '__pycache__', 
-        'dist', 'build', '.next', '.idea', '.vscode'
+        'dist', 'build', '.next', '.idea', '.vscode', '.dart_tool', 'ios', 'android'
     }
     
-    # Language extensions CodeExplain will support
+    # Complete list of supported language extensions for parsing
     SUPPORTED_EXTENSIONS = {
-        '.py', '.js', '.jsx', '.ts', '.tsx', '.cpp', '.h', '.java', '.dart', '.html', '.css', '.md'
+        '.py', '.js', '.jsx', '.ts', '.tsx', '.cpp', '.h', '.hpp', '.c', 
+        '.java', '.go', '.rs', '.kt', '.swift', '.html', '.css', '.md', '.dart'
     }
 
     @staticmethod
@@ -26,7 +28,7 @@ class RepoService:
     async def clone_repository(self, github_url: str) -> dict:
         """
         Asynchronously clones a public git repository to local storage.
-        Runs the blocking GitPython clone operation inside a thread pool.
+        Runs the blocking GitPython clone operation inside a thread pool with depth=1 (shallow clone).
         """
         repo_id = self.generate_repo_id()
         target_dir = os.path.join(settings.REPO_STORE_DIR, repo_id)
@@ -34,11 +36,15 @@ class RepoService:
         try:
             loop = asyncio.get_running_loop()
             
-            # depth=1 performs a "shallow clone" (only grabs the latest commit, making it super fast)
-            await loop.run_in_executor(
-                None, 
-                lambda: Repo.clone_from(github_url, target_dir, depth=1)
-            )
+            # Perform memory-optimized shallow clone in an async executor
+            def _clone():
+                print(f"📥 Shallow cloning {github_url} (depth=1) to prevent RAM spikes...")
+                repo = Repo.clone_from(github_url, target_dir, depth=1)
+                repo.close()
+                del repo
+                gc.collect()
+
+            await loop.run_in_executor(None, _clone)
             
             # Scan the cloned directory to see how many valid code files we found
             valid_files = self.scan_repo_files(target_dir)
@@ -83,7 +89,6 @@ class RepoService:
         the standard data/repos location inside an async thread executor, and runs a file inventory scan.
         """
         repo_id = self.generate_repo_id()
-        # FIX: Changed from REPO_STORAGE_DIR to REPO_STORE_DIR to maintain project consistency
         target_dir = os.path.join(settings.REPO_STORE_DIR, repo_id)
         os.makedirs(target_dir, exist_ok=True)
         
@@ -96,7 +101,7 @@ class RepoService:
 
             # 2. Helper function to unpack the zip archive safely
             def extract_zip():
-                print(f"📦 Extracting uploaded archive: {original_filename}...")
+                print(f"Extracting uploaded archive: {original_filename}...")
                 with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
                     zip_ref.extractall(target_dir)
 
