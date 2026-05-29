@@ -1,5 +1,7 @@
 import os
-from langchain.text_splitter import RecursiveCharacterTextSplitter, Language
+from langchain_core.documents import Document
+# FIX: Migrated from deprecated 'langchain.text_splitter' to 'langchain_text_splitters'
+from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
 
 class CodeParser:
     def __init__(self):
@@ -13,10 +15,17 @@ class CodeParser:
             '.cpp': Language.CPP,
             '.h': Language.CPP,
             '.hpp': Language.CPP,
+            '.c': Language.C,
             '.java': Language.JAVA,
+            '.go': Language.GO,
+            '.rs': Language.RUST,
+            '.kt': Language.KOTLIN,
+            '.swift': Language.SWIFT,
             '.html': Language.HTML,
-            # Dart falls back gracefully to JS bracket rules to preserve structural blocks
-            '.dart': Language.JS  
+            '.css': Language.CSS,
+            '.md': Language.MARKDOWN,
+            # Use Dart explicitly, with a graceful fallback if needed
+            '.dart': Language.DART if hasattr(Language, 'DART') else Language.JS  
         }
 
     def get_language_string(self, file_path: str) -> str:
@@ -25,15 +34,18 @@ class CodeParser:
         mapping = {
             '.py': 'python', '.js': 'javascript', '.jsx': 'javascript',
             '.ts': 'typescript', '.tsx': 'typescript', '.cpp': 'cpp',
-            '.h': 'cpp', '.java': 'java', '.dart': 'dart',
-            '.html': 'html', '.css': 'css', '.md': 'markdown'
+            '.h': 'cpp', '.hpp': 'cpp', '.c': 'c', '.java': 'java', 
+            '.dart': 'dart', '.html': 'html', '.css': 'css', 
+            '.md': 'markdown', '.go': 'go', '.rs': 'rust',
+            '.kt': 'kotlin', '.swift': 'swift'
         }
         return mapping.get(ext, 'text')
 
-    def chunk_file(self, file_path: str, repo_base_path: str) -> list[dict]:
+    def parse_file(self, file_path: str, root_dir: str) -> list[Document]:
         """
         Reads a single file, selects the best chunking strategy based on 
-        extension, slices it safely, and returns chunks loaded with metadata.
+        extension, slices it safely, and returns a list of Document objects 
+        loaded with metadata.
         """
         ext = os.path.splitext(file_path)[1].lower()
 
@@ -41,8 +53,12 @@ class CodeParser:
         try:
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ Error reading file {file_path}: {str(e)}")
             return [] # Skip files that are locked or corrupted
+
+        if not content.strip():
+            return []
 
         # 2. Select the optimal Splitting Strategy
         if ext == '.md':
@@ -70,20 +86,23 @@ class CodeParser:
         raw_chunks = splitter.split_text(content)
 
         # 4. Standardize the file path format (e.g., convert 'lib\main.dart' to 'lib/main.dart')
-        relative_path = os.path.relpath(file_path, repo_base_path).replace("\\", "/")
+        relative_path = os.path.relpath(file_path, root_dir).replace("\\", "/")
 
-        # 5. Pack everything into clean dictionary blocks containing your core metadata
-        structured_chunks = []
-        for chunk in raw_chunks:
-            structured_chunks.append({
-                "page_content": chunk,
-                "metadata": {
+        # 5. Pack everything into clean LangChain Document objects containing your core metadata
+        documents = []
+        for idx, chunk in enumerate(raw_chunks):
+            doc = Document(
+                page_content=chunk,
+                metadata={
                     "file_path": relative_path,
-                    "language": self.get_language_string(file_path)
+                    "language": self.get_language_string(file_path),
+                    "chunk_index": idx,
+                    "source": relative_path
                 }
-            })
+            )
+            documents.append(doc)
 
-        return structured_chunks
+        return documents
 
 # Singleton instance to import inside our orchestrator services
 code_parser = CodeParser()
