@@ -130,9 +130,8 @@ class GeminiChatEngine:
         
     async def generate_codebase_overview(self, repo_id: str) -> str:
         """
-        Generates an Overview Report. If Gemini is rate-limited (429) or offline (503),
-        this function triggers an offline file-system analyzer that constructs a
-        custom, beautiful Architecture Report customized to your repository.
+        Generates an Overview Report. Enforces strict Markdown blockquotes 
+        for all structural diagrams to preserve spacing on web browsers.
         """
         try:
             vector_store = vector_store_manager.load_vector_store(repo_id)
@@ -145,15 +144,27 @@ class GeminiChatEngine:
 
             context_string = "\n\n".join(context_blocks)
 
+            # Updated strict system layout instructions to prevent HTML layout collapsing and premature section splitting
             system_instruction = (
-                "You are an expert Technical Architect. Your job is to analyze a newly connected codebase "
-                "and generate a highly professional, detailed, and comprehensive Architecture Report for a developer "
-                "who is looking at this repository for the first time. Do not use any emojis.\n\n"
+                "You are an expert Technical Architect. Your job is to analyze a connected codebase "
+                "and generate a highly professional, detailed, and comprehensive Architecture Report. Do not use emojis.\n\n"
                 "YOUR REPORT MUST FOLLOW THIS EXACT LAYOUT:\n"
-                "1. CODEBASE SUMMARY: A thorough 1-2 paragraph technical executive summary of what the application does, its architectural core, its complete tech stack, and primary purpose.\n"
-                "2. ARCHITECTURAL LAYOUT: A detailed breakdown of the directory structure and what major components live where (e.g., Controllers, Models, Services, UI Engine).\n"
-                "3. CORE DATA FLOW (ASCII DIAGRAM): Generate a clean, highly visual ASCII flowchart mapping how data travels through the application (e.g., User Interaction -> Controller -> Service -> Local Database).\n"
-                "4. RECOMMENDED STARTING POINTS: Suggest critical structural files the developer should look at first to understand the core business logic, including technical explanations of why those files are foundational."
+                "1. CODEBASE SUMMARY: A thorough 1-2 paragraph technical executive summary of the application.\n"
+                "2. ARCHITECTURAL LAYOUT: A detailed breakdown of the directory structure.\n"
+                "3. CORE DATA FLOW (ASCII DIAGRAM): A clean, visual representation of how data travels through the application.\n"
+                "4. RECOMMENDED STARTING POINTS: Suggest critical structural files the developer should look at first.\n\n"
+                "CRITICAL FORMATTING INSTRUCTIONS:\n"
+                "- EVERY SINGLE ASCII flowchart, visual route sequence, tree map, path, or visual layout block "
+                "MUST be fully enclosed inside raw markdown code blocks (using triple-backticks ```text ... ```).\n"
+                "- NEVER mix raw flowchart bars (|), pipelines (||), or alignment lines directly into standard paragraph text.\n"
+                "- Write explanations in standard, clean paragraphs. Place all visual tracks in isolated monospaced code blocks "
+                "so their spacing columns do not collapse on web browsers.\n"
+                "- DO NOT write trailing divider hashtags (like ###) or blank separator blocks at the end of sections.\n"
+                "- CRITICAL LAYOUT RULES FOR HEADERS AND TEXT:\n"
+                "  The frontend card parser splits this document into cards based on lines written in ALL-CAPS (uppercase).\n"
+                "  Therefore, DO NOT use ALL-CAPS (UPPERCASE) for any subheadings, step labels, diagram labels, flow charts, or inline text descriptions.\n"
+                "  The ONLY lines allowed to be in ALL-CAPS are the four main numbered section headers listed above (e.g. '1. CODEBASE SUMMARY', '2. ARCHITECTURAL LAYOUT', '3. CORE DATA FLOW (ASCII DIAGRAM)', '4. RECOMMENDED STARTING POINTS').\n"
+                "  Use standard Title Case or Sentence Case for all other titles, descriptions, and ASCII flowchart nodes (e.g., use 'App Launch' instead of 'APP LAUNCH', 'Determine City' instead of 'DETERMINE CITY', 'Call worker.getData(city)' instead of 'CALL WORKER.GETDATA(CITY)')."
             )
 
             prompt = (
@@ -161,7 +172,6 @@ class GeminiChatEngine:
                 "Generate the clean, professional, markdown-formatted Overview Report."
             )
 
-            # Overview compilation uses the dynamic MODEL_NAME loaded directly via environment parameters
             response = self.client.models.generate_content(
                 model=self.MODEL_NAME,
                 contents=prompt,
@@ -180,38 +190,30 @@ class GeminiChatEngine:
         """
         Scans your local project files on disk, classifies the project tech stack,
         and generates a beautiful, valid markdown report matching your layout engine.
-        Exposed publicly for seamless synchronization with repo_service.py and routes.py.
         """
-        # Formulate absolute directory path to local files
         target_dir = os.path.join(settings.REPO_STORE_DIR, repo_id)
         all_files = []
         
-        # Supported codebase extensions to scan (prevents binary image asset pollution)
         supported_exts = {
             '.py', '.js', '.jsx', '.ts', '.tsx', '.cpp', '.h', '.hpp', '.c', 
             '.java', '.go', '.rs', '.kt', '.swift', '.html', '.css', '.md', '.dart'
         }
         
         if os.path.exists(target_dir):
-            # Recursively find up to 100 files, ignoring package configurations
             for root, _, filenames in os.walk(target_dir):
                 for filename in filenames:
                     relpath = os.path.relpath(os.path.join(root, filename), target_dir)
-                    
-                    # FIX 1: Convert backslashes to forward slashes BEFORE verifying banned directories (Fixes Windows compatibility)
                     normalized_relpath = relpath.replace("\\", "/")
                     
                     if any(x in normalized_relpath for x in ['.git/', 'node_modules/', 'build/', '.dart_tool/', 'ios/', 'android/', 'macos/', 'windows/']):
                         continue
                     
-                    # FIX 2: Validate that the file is a supported source code file
                     ext = os.path.splitext(filename)[1].lower()
                     if ext not in supported_exts:
                         continue
                         
                     all_files.append(normalized_relpath)
         
-        # Heuristically classify the codebase tech stack
         is_flutter = any(f.endswith('.dart') for f in all_files)
         is_react = any(f.endswith(('.jsx', '.tsx', '.js')) for f in all_files)
         is_python = any(f.endswith('.py') for f in all_files)
@@ -232,11 +234,11 @@ class GeminiChatEngine:
 |   UI Component   |
 +--------v---------+
          | (triggers state event)
-+--------v---------+
++------------------+
 |  BLoC / Provider |
 +--------v---------+
          | (queries updates)
-+--------v---------+
++------------------+
 |  Data Repository |
 +------------------+"""
         elif is_react:
@@ -244,11 +246,11 @@ class GeminiChatEngine:
 |   React View DOM |
 +--------v---------+
          | (dispatches hook actions)
-+--------v---------+
++------------------+
 | State Controller |
 +--------v---------+
          | (fetches API data)
-+--------v---------+
++------------------+
 | Backend Service  |
 +------------------+"""
         elif is_python:
@@ -256,22 +258,20 @@ class GeminiChatEngine:
 |    HTTP Client   |
 +--------v---------+
          | (REST Request API)
-+--------v---------+
++------------------+
 | Router Controller|
 +--------v---------+
          | (executes DB query)
-+--------v---------+
++------------------+
 | Database Service |
 +------------------+"""
 
-        # Choose the first 6 key code files to display as recommended starting entries
         key_files = [f for f in all_files if any(k in f.lower() for k in ['main', 'app', 'home', 'route', 'controller', 'service'])]
         if not key_files:
             key_files = all_files[:6]
         else:
             key_files = list(set(key_files))[:6]
 
-        # Construct the beautifully structured Report
         report = f"""1. CODEBASE SUMMARY
 This codebase represents an elite development project constructed using the {tech_stack} tech stack. Designed primarily for {primary_purpose}, it utilizes clean OOP practices to coordinate UI states, structural classes, and underlying service dependencies.
 
@@ -281,7 +281,6 @@ The architecture is designed for modular scalability and rapid deployment. It pa
 Below is the directory map of the connected files found within this workspace. The project utilizes structural components to split view presentation from business layer code:
 
 """
-        # Append files as neat markdown items
         for f in all_files[:15]:
             report += f"* `{f}` : System source file coordinating logic elements.\n"
         if len(all_files) > 15:
@@ -297,7 +296,6 @@ Below is the directory map of the connected files found within this workspace. T
 To understand the core business logic of this codebase, developers are recommended to look at these files first:
 
 """
-        # Map key starting point instructions
         for kf in key_files:
             report += f"* `{kf}`: Primary structural entry point coordinating application workflows.\n"
 
